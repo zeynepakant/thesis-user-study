@@ -97,6 +97,26 @@
     gap: 0.7em;
     flex-wrap: wrap;
   }
+  .likert-row {
+    display: flex;
+    gap: 0.4em;
+    justify-content: center;
+    margin-top: 0.6em;
+    flex-wrap: wrap;
+  }
+  .likert-row button {
+    min-width: 2.8em;
+    margin-top: 0;
+  }
+  .likert-anchors {
+    display: flex;
+    justify-content: space-between;
+    max-width: 32em;
+    margin: 0.3em auto 0;
+    font-size: 0.85em;
+    color: #666;
+  }
+  .chosen { outline: 3px solid #34c759; outline-offset: 4px; }
 </style>
 </head>
 <body>
@@ -154,8 +174,9 @@ const CONFIG = {
     Two video clips are shown side by side. Both show the same head
     wearing the same hat, but rendered with slightly different
     settings. Pick the clip that looks more like a real person
-    naturally wearing the hat. There are no right or wrong answers —
-    trust your first impression.
+    naturally wearing the hat. Then rate the clip you chose on a
+    1–7 scale (1 = artificial, 7 = real person). There are no right or
+    wrong answers — trust your first impression.
   </p>
   <h2>Ranking trials</h2>
   <p>
@@ -313,20 +334,30 @@ function renderTrial() {
     container.innerHTML = progress + `
       <h2>Which clip looks more like a real person naturally wearing a hat?</h2>
       <div class="videos">
-        <div class="video-box">
+        <div class="video-box" id="box-left">
           <video src="${videoUrl(t.hair, t.leftAlpha)}" autoplay loop muted playsinline></video>
           <div class="video-label">Clip A</div>
           <button data-side="left">Choose A</button>
         </div>
-        <div class="video-box">
+        <div class="video-box" id="box-right">
           <video src="${videoUrl(t.hair, t.rightAlpha)}" autoplay loop muted playsinline></video>
           <div class="video-label">Clip B</div>
           <button data-side="right">Choose B</button>
         </div>
       </div>
+      <div id="afc-likert" class="hidden">
+        <h2>How natural did the clip you chose look?</h2>
+        <div class="likert-row">
+          ${[1,2,3,4,5,6,7].map(n => `<button data-rating="${n}">${n}</button>`).join('')}
+        </div>
+        <div class="likert-anchors">
+          <span>1 — artificial</span>
+          <span>7 — real person</span>
+        </div>
+      </div>
     `;
-    container.querySelectorAll('button').forEach(btn => {
-      btn.onclick = () => recordAfc(t, btn.dataset.side);
+    container.querySelectorAll('button[data-side]').forEach(btn => {
+      btn.onclick = () => showLikert(t, btn.dataset.side, container);
     });
   } else {
     const labels = Object.keys(t.labelToAlpha);
@@ -356,7 +387,21 @@ function renderTrial() {
   show('screen-trial');
 }
 
-function recordAfc(trial, side) {
+function showLikert(trial, side, container) {
+  // Highlight the chosen clip and disable both choose buttons.
+  container.querySelector(`#box-${side}`).classList.add('chosen');
+  container.querySelectorAll('button[data-side]').forEach(b => b.disabled = true);
+  // Reveal the rating block and wire it up.
+  const likert = container.querySelector('#afc-likert');
+  likert.classList.remove('hidden');
+  likert.querySelectorAll('button[data-rating]').forEach(btn => {
+    btn.onclick = () => recordAfc(trial, side, parseInt(btn.dataset.rating));
+  });
+  // Scroll the rating into view (helpful on smaller laptop screens).
+  likert.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function recordAfc(trial, side, rating) {
   state.responses.push({
     trialId: trial.id,
     type: trial.type,
@@ -365,6 +410,7 @@ function recordAfc(trial, side) {
     rightAlpha: trial.rightAlpha,
     chosenSide: side,
     chosenAlpha: side === 'left' ? trial.leftAlpha : trial.rightAlpha,
+    plausibilityChosen: rating,
     msSinceStart: Date.now() - state.startTime,
   });
   state.index++;
