@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hair-Accessory Perceptual Study</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 920px;
+    margin: 2em auto;
+    padding: 0 1em 4em;
+    line-height: 1.5;
+    color: #1d1d1f;
+    background: #f6f6f7;
+  }
+  h1, h2 { color: #111; }
+  h2 { font-size: 1.25em; margin-top: 0; }
+  .panel {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5em 2em;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .hidden { display: none; }
+  button {
+    padding: .7em 1.6em;
+    font-size: 1em;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid #007aff;
+    background: #007aff;
+    color: white;
+    border-radius: 5px;
+    margin-top: 1em;
+  }
+  button.secondary { background: white; color: #007aff; }
+  button:hover { opacity: .9; }
+  button:disabled { background: #ccc; border-color: #ccc; cursor: not-allowed; }
+  .progress {
+    color: #888;
+    font-size: .9em;
+    margin-bottom: 0.5em;
+  }
+  .videos {
+    display: flex;
+    gap: 1em;
+    justify-content: center;
+    margin: 1em 0;
+    flex-wrap: wrap;
+  }
+  .video-box {
+    flex: 1 1 280px;
+    min-width: 240px;
+    max-width: 420px;
+    text-align: center;
+  }
+  video {
+    width: 100%;
+    border-radius: 6px;
+    background: black;
+  }
+  .video-label {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin: 0.5em 0 0.3em;
+  }
+  select {
+    padding: .4em .6em;
+    font-size: 1em;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+  }
+  label.field {
+    display: block;
+    margin: 0.8em 0;
+  }
+  label.field input,
+  label.field select {
+    margin-left: 0.5em;
+  }
+  textarea {
+    width: 100%;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.85em;
+  }
+  .checkbox-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6em;
+    margin-top: 1em;
+  }
+  .checkbox-row input { margin-top: 4px; }
+  .small { font-size: 0.9em; color: #555; }
+  .button-row {
+    display: flex;
+    gap: 0.7em;
+    flex-wrap: wrap;
+  }
+</style>
+</head>
+<body>
+
+<!-- ────── CONFIG ────────────────────────────────────────────────────── -->
+<script>
+const CONFIG = {
+  // Folder containing the 9 MP4 clips, relative to this index.html.
+  // Filenames must follow: clip_<hair>_a<alpha>.mp4
+  videoDir: 'clips',
+
+  // Optional Google Apps Script webhook URL. Leave empty to use the
+  // copy/download fallback at the end of the study.
+  webhookUrl: '',
+
+  // Stimulus dimensions (must match the rendered clips).
+  hairs: ['strands00001', 'strands00002', 'strands00514'],
+  alphas: ['000', '050', '100'],
+};
+</script>
+
+<!-- ────── SCREEN: CONSENT ───────────────────────────────────────────── -->
+<div id="screen-consent" class="panel">
+  <h1>Hair–Accessory Perceptual Study</h1>
+  <p>
+    This is a short perceptual study on 3D rendering of hair and head
+    accessories. You will watch a series of brief video clips showing an
+    animated head wearing a hat, and answer simple questions about each.
+  </p>
+  <ul>
+    <li>The study takes about <strong>10 minutes</strong>.</li>
+    <li>No personal or identifying information is collected. Responses
+        are stored anonymously and used solely for thesis research.</li>
+    <li>You may stop at any time by closing the tab. Partial data is
+        discarded.</li>
+    <li>Please complete the study on a desktop or laptop with sound on
+        and a stable internet connection.</li>
+  </ul>
+  <div class="checkbox-row">
+    <input type="checkbox" id="consent-check">
+    <label for="consent-check">
+      I am at least 18 years old and consent to participate in this
+      anonymous research study.
+    </label>
+  </div>
+  <button id="begin-btn" disabled>Begin</button>
+</div>
+
+<!-- ────── SCREEN: INSTRUCTIONS ──────────────────────────────────────── -->
+<div id="screen-instructions" class="panel hidden">
+  <h1>Instructions</h1>
+  <p>You will see two types of trials:</p>
+  <h2>Comparison trials</h2>
+  <p>
+    Two video clips are shown side by side. Both show the same head
+    wearing the same hat, but rendered with slightly different
+    settings. Pick the clip that looks more like a real person
+    naturally wearing the hat. There are no right or wrong answers —
+    trust your first impression.
+  </p>
+  <h2>Ranking trials</h2>
+  <p>
+    Three video clips are shown together, labelled A, B, and C. Rank
+    them by how much the hat appears to be <em>pressing the hair
+    down</em>. Use the dropdown under each clip to assign a rank
+    (1 = least pressed, 3 = most pressed). Each rank must be used
+    exactly once.
+  </p>
+  <p class="small">
+    Trials are presented in a random order. Each clip is 5 seconds and
+    loops automatically while you decide.
+  </p>
+  <button id="instructions-btn">Continue to study</button>
+</div>
+
+<!-- ────── SCREEN: TRIAL (rendered dynamically) ─────────────────────── -->
+<div id="screen-trial" class="panel hidden"></div>
+
+<!-- ────── SCREEN: DEMOGRAPHICS ─────────────────────────────────────── -->
+<div id="screen-demographics" class="panel hidden">
+  <h1>Three short questions (optional)</h1>
+  <p class="small">
+    These help us check for sampling effects in the data. Skip any
+    you'd rather not answer.
+  </p>
+  <label class="field">
+    Age:
+    <select id="q-age">
+      <option value="">prefer not to say</option>
+      <option>18–24</option>
+      <option>25–34</option>
+      <option>35–44</option>
+      <option>45–54</option>
+      <option>55+</option>
+    </select>
+  </label>
+  <label class="field">
+    Experience with 3D graphics / animation:
+    <select id="q-expertise">
+      <option value="">prefer not to say</option>
+      <option value="none">None</option>
+      <option value="hobbyist">Hobbyist / student</option>
+      <option value="professional">Professional</option>
+    </select>
+  </label>
+  <label class="field">
+    How often do you wear hats?
+    <select id="q-hat">
+      <option value="">prefer not to say</option>
+      <option value="never">Never</option>
+      <option value="rarely">Rarely</option>
+      <option value="sometimes">Sometimes</option>
+      <option value="often">Often / daily</option>
+    </select>
+  </label>
+  <button id="demo-btn">Submit</button>
+</div>
+
+<!-- ────── SCREEN: DONE ─────────────────────────────────────────────── -->
+<div id="screen-done" class="panel hidden">
+  <h1>Thank you!</h1>
+  <p>Your responses have been recorded.</p>
+  <div id="result-fallback" class="hidden">
+    <p>
+      Automatic submission is not configured. Please copy or download
+      the data below and email it to the researcher.
+    </p>
+    <textarea id="result-json" rows="10" readonly></textarea>
+    <div class="button-row">
+      <button id="copy-btn" class="secondary">Copy to clipboard</button>
+      <button id="download-btn" class="secondary">Download as file</button>
+    </div>
+  </div>
+  <p class="small">You may close this tab.</p>
+</div>
+
+<!-- ────── LOGIC ────────────────────────────────────────────────────── -->
+<script>
+const state = {
+  participantId: makeId(),
+  startTime: Date.now(),
+  trials: [],
+  responses: [],
+  index: 0,
+  demographics: {},
+};
+
+function makeId() {
+  return 'p_' + Math.random().toString(36).slice(2, 10) +
+         Date.now().toString(36).slice(-4);
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function show(screenId) {
+  document.querySelectorAll('div[id^="screen-"]').forEach(d => {
+    d.classList.toggle('hidden', d.id !== screenId);
+  });
+  window.scrollTo(0, 0);
+}
+
+function videoUrl(hair, alpha) {
+  return `${CONFIG.videoDir}/clip_${hair}_a${alpha}.mp4`;
+}
+
+function buildTrials() {
+  const afc = [];
+  for (const hair of CONFIG.hairs) {
+    const pairs = [['000', '050'], ['000', '100'], ['050', '100']];
+    for (const [a, b] of pairs) {
+      const flip = Math.random() < 0.5;
+      afc.push({
+        id: `afc_${hair}_${a}_${b}`,
+        type: '2afc',
+        hair,
+        leftAlpha:  flip ? b : a,
+        rightAlpha: flip ? a : b,
+        originalA: a,
+        originalB: b,
+      });
+    }
+  }
+  const rank = [];
+  for (const hair of CONFIG.hairs) {
+    const labels = shuffle(['A', 'B', 'C']);
+    rank.push({
+      id: `rank_${hair}`,
+      type: 'rank',
+      hair,
+      labelToAlpha: {
+        [labels[0]]: '000',
+        [labels[1]]: '050',
+        [labels[2]]: '100',
+      },
+    });
+  }
+  state.trials = shuffle([...afc, ...rank]);
+}
+
+function renderTrial() {
+  if (state.index >= state.trials.length) return show('screen-demographics');
+  const t = state.trials[state.index];
+  const container = document.getElementById('screen-trial');
+  const progress = `<p class="progress">Trial ${state.index + 1} of ${state.trials.length}</p>`;
+  if (t.type === '2afc') {
+    container.innerHTML = progress + `
+      <h2>Which clip looks more like a real person naturally wearing a hat?</h2>
+      <div class="videos">
+        <div class="video-box">
+          <video src="${videoUrl(t.hair, t.leftAlpha)}" autoplay loop muted playsinline></video>
+          <div class="video-label">Clip A</div>
+          <button data-side="left">Choose A</button>
+        </div>
+        <div class="video-box">
+          <video src="${videoUrl(t.hair, t.rightAlpha)}" autoplay loop muted playsinline></video>
+          <div class="video-label">Clip B</div>
+          <button data-side="right">Choose B</button>
+        </div>
+      </div>
+    `;
+    container.querySelectorAll('button').forEach(btn => {
+      btn.onclick = () => recordAfc(t, btn.dataset.side);
+    });
+  } else {
+    const labels = Object.keys(t.labelToAlpha);
+    container.innerHTML = progress + `
+      <h2>Rank the three clips by how much the hat appears to be pressing the hair down.</h2>
+      <p class="small">1 = hair least pressed, 3 = hair most pressed. Each rank used exactly once.</p>
+      <div class="videos">
+        ${labels.map(L => `
+          <div class="video-box">
+            <video src="${videoUrl(t.hair, t.labelToAlpha[L])}" autoplay loop muted playsinline></video>
+            <div class="video-label">Clip ${L}</div>
+            <label>Rank:
+              <select data-label="${L}">
+                <option value="">—</option>
+                <option value="1">1 (least pressed)</option>
+                <option value="2">2</option>
+                <option value="3">3 (most pressed)</option>
+              </select>
+            </label>
+          </div>
+        `).join('')}
+      </div>
+      <button id="rank-submit">Submit ranking</button>
+    `;
+    container.querySelector('#rank-submit').onclick = () => recordRank(t, container);
+  }
+  show('screen-trial');
+}
+
+function recordAfc(trial, side) {
+  state.responses.push({
+    trialId: trial.id,
+    type: trial.type,
+    hair: trial.hair,
+    leftAlpha:  trial.leftAlpha,
+    rightAlpha: trial.rightAlpha,
+    chosenSide: side,
+    chosenAlpha: side === 'left' ? trial.leftAlpha : trial.rightAlpha,
+    msSinceStart: Date.now() - state.startTime,
+  });
+  state.index++;
+  renderTrial();
+}
+
+function recordRank(trial, container) {
+  const selects = container.querySelectorAll('select');
+  const ranks = {};
+  for (const sel of selects) {
+    if (!sel.value) { alert('Please assign a rank to every clip.'); return; }
+    ranks[sel.dataset.label] = parseInt(sel.value);
+  }
+  const values = Object.values(ranks);
+  if (new Set(values).size !== 3) {
+    alert('Each rank (1, 2, 3) must be used exactly once.');
+    return;
+  }
+  state.responses.push({
+    trialId: trial.id,
+    type: trial.type,
+    hair: trial.hair,
+    labelToAlpha: trial.labelToAlpha,
+    ranksByLabel: ranks,
+    msSinceStart: Date.now() - state.startTime,
+  });
+  state.index++;
+  renderTrial();
+}
+
+function submitAll() {
+  state.demographics = {
+    age:        document.getElementById('q-age').value || null,
+    expertise:  document.getElementById('q-expertise').value || null,
+    hatFreq:    document.getElementById('q-hat').value || null,
+  };
+  const payload = {
+    participantId: state.participantId,
+    startTime: state.startTime,
+    endTime: Date.now(),
+    durationSec: Math.round((Date.now() - state.startTime) / 1000),
+    responses: state.responses,
+    demographics: state.demographics,
+  };
+
+  const finalize = () => {
+    document.getElementById('result-json').value = JSON.stringify(payload, null, 2);
+    show('screen-done');
+  };
+
+  if (CONFIG.webhookUrl) {
+    fetch(CONFIG.webhookUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(finalize).catch(() => {
+      document.getElementById('result-fallback').classList.remove('hidden');
+      finalize();
+    });
+  } else {
+    document.getElementById('result-fallback').classList.remove('hidden');
+    finalize();
+  }
+}
+
+// ── wiring ──────────────────────────────────────────────────────────────
+document.getElementById('consent-check').onchange = e => {
+  document.getElementById('begin-btn').disabled = !e.target.checked;
+};
+document.getElementById('begin-btn').onclick = () => show('screen-instructions');
+document.getElementById('instructions-btn').onclick = () => {
+  buildTrials();
+  state.index = 0;
+  state.startTime = Date.now();
+  renderTrial();
+};
+document.getElementById('demo-btn').onclick = submitAll;
+document.getElementById('copy-btn').onclick = () => {
+  const ta = document.getElementById('result-json');
+  ta.select();
+  document.execCommand('copy');
+  alert('Copied. Please paste into an email to the researcher.');
+};
+document.getElementById('download-btn').onclick = () => {
+  const data = document.getElementById('result-json').value;
+  const blob = new Blob([data], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `study_${state.participantId}.json`;
+  a.click();
+};
+</script>
+
+</body>
+</html>
