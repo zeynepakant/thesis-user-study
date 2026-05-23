@@ -287,15 +287,17 @@ function buildTrials() {
   }
   const rank = [];
   for (const hair of CONFIG.hairs) {
-    const labels = shuffle(['A', 'B', 'C']);
+    // Shuffle the alphas under fixed A/B/C labels so the underlying
+    // condition at each visual slot is randomised per trial.
+    const shuffledAlphas = shuffle(['000', '050', '100']);
     rank.push({
       id: `rank_${hair}`,
       type: 'rank',
       hair,
       labelToAlpha: {
-        [labels[0]]: '000',
-        [labels[1]]: '050',
-        [labels[2]]: '100',
+        A: shuffledAlphas[0],
+        B: shuffledAlphas[1],
+        C: shuffledAlphas[2],
       },
     });
   }
