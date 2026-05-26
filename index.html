@@ -133,8 +133,16 @@ const CONFIG = {
   webhookUrl: 'https://script.google.com/macros/s/AKfycbwN3Yn3qnt_kWJT1fvM1nc1gu0R-CCxNk1aHbP8O2Pc1Xk-PWi5QkeE5-eYH8zqoBW3/exec',
 
   // Stimulus dimensions (must match the rendered clips).
+  accessories: ['geometric'],
   hairs: ['strands00001', 'strands00002', 'strands00514'],
   alphas: ['000', '050', '100'],
+
+  // Realistic-asset ranking trials shown after the main 12 trials,
+  // before demographics. Same A/B/C ranking format as the main study
+  // (1 = hair least pressed, 3 = hair most pressed) — gives an alpha
+  // comparison on the realistic mesh that mirrors the geometric one.
+  realisticAccessory: 'purchased',
+  realisticHairs: ['strands00001', 'strands00002', 'strands00514'],
 };
 </script>
 
@@ -169,6 +177,16 @@ const CONFIG = {
 <div id="screen-instructions" class="panel hidden">
   <h1>Instructions</h1>
   <p>You will see two types of trials:</p>
+  <p class="small" style="background:#f4f4f7; border-left:4px solid #888;
+       padding:0.6em 0.9em; border-radius:4px;">
+    <strong>Note on the stimuli.</strong> The clips show a simplified
+    3D rendering of a knit beanie sitting on an animated head. The
+    beanie shape is a geometric representation rather than a photoreal
+    asset — we are studying the deformation behaviour, not the
+    photographic look. Please rate based on whether the hat appears to
+    sit on the hair the way a real beanie would, not on how textured or
+    detailed the render is.
+  </p>
   <h2>Comparison trials</h2>
   <p>
     Two video clips are shown side by side. Both show the same head
@@ -188,13 +206,28 @@ const CONFIG = {
   </p>
   <p class="small">
     Trials are presented in a random order. Each clip is 5 seconds and
-    loops automatically while you decide.
+    loops automatically while you decide. At the end you will see a
+    short section of ranking trials using a more realistic beanie mesh
+    — the task there is identical to the main ranking task above.
   </p>
   <button id="instructions-btn">Continue to study</button>
 </div>
 
 <!-- ────── SCREEN: TRIAL (rendered dynamically) ─────────────────────── -->
 <div id="screen-trial" class="panel hidden"></div>
+
+<!-- ────── SCREEN: REALISTIC TRIALS (purchased-beanie ranking) ──────── -->
+<div id="screen-examples" class="panel hidden">
+  <h1>One more section: realistic-asset trials</h1>
+  <p>
+    The clips you saw in the main trials used a simplified geometric
+    beanie. The clips in this section apply the same pipeline to a
+    <em>realistic, artist-authored</em> beanie mesh — closer to how
+    the system would look in a finished avatar application. The task
+    is the same ranking task as before.
+  </p>
+  <div id="examples-content"></div>
+</div>
 
 <!-- ────── SCREEN: DEMOGRAPHICS ─────────────────────────────────────── -->
 <div id="screen-demographics" class="panel hidden">
@@ -285,48 +318,54 @@ function show(screenId) {
   window.scrollTo(0, 0);
 }
 
-function videoUrl(hair, alpha) {
-  return `${CONFIG.videoDir}/clip_${hair}_a${alpha}.mp4`;
+function videoUrl(accessory, hair, alpha) {
+  return `${CONFIG.videoDir}/clip_${accessory}_${hair}_a${alpha}.mp4`;
 }
 
 function buildTrials() {
   const afc = [];
-  for (const hair of CONFIG.hairs) {
-    const pairs = [['000', '050'], ['000', '100'], ['050', '100']];
-    for (const [a, b] of pairs) {
-      const flip = Math.random() < 0.5;
-      afc.push({
-        id: `afc_${hair}_${a}_${b}`,
-        type: '2afc',
-        hair,
-        leftAlpha:  flip ? b : a,
-        rightAlpha: flip ? a : b,
-        originalA: a,
-        originalB: b,
-      });
+  for (const accessory of CONFIG.accessories) {
+    for (const hair of CONFIG.hairs) {
+      const pairs = [['000', '050'], ['000', '100'], ['050', '100']];
+      for (const [a, b] of pairs) {
+        const flip = Math.random() < 0.5;
+        afc.push({
+          id: `afc_${accessory}_${hair}_${a}_${b}`,
+          type: '2afc',
+          accessory,
+          hair,
+          leftAlpha:  flip ? b : a,
+          rightAlpha: flip ? a : b,
+          originalA: a,
+          originalB: b,
+        });
+      }
     }
   }
   const rank = [];
-  for (const hair of CONFIG.hairs) {
-    // Shuffle the alphas under fixed A/B/C labels so the underlying
-    // condition at each visual slot is randomised per trial.
-    const shuffledAlphas = shuffle(['000', '050', '100']);
-    rank.push({
-      id: `rank_${hair}`,
-      type: 'rank',
-      hair,
-      labelToAlpha: {
-        A: shuffledAlphas[0],
-        B: shuffledAlphas[1],
-        C: shuffledAlphas[2],
-      },
-    });
+  for (const accessory of CONFIG.accessories) {
+    for (const hair of CONFIG.hairs) {
+      // Shuffle the alphas under fixed A/B/C labels so the underlying
+      // condition at each visual slot is randomised per trial.
+      const shuffledAlphas = shuffle(['000', '050', '100']);
+      rank.push({
+        id: `rank_${accessory}_${hair}`,
+        type: 'rank',
+        accessory,
+        hair,
+        labelToAlpha: {
+          A: shuffledAlphas[0],
+          B: shuffledAlphas[1],
+          C: shuffledAlphas[2],
+        },
+      });
+    }
   }
   state.trials = shuffle([...afc, ...rank]);
 }
 
 function renderTrial() {
-  if (state.index >= state.trials.length) return show('screen-demographics');
+  if (state.index >= state.trials.length) return renderExamples();
   const t = state.trials[state.index];
   const container = document.getElementById('screen-trial');
   const progress = `<p class="progress">Trial ${state.index + 1} of ${state.trials.length}</p>`;
@@ -335,12 +374,12 @@ function renderTrial() {
       <h2>Which clip looks more like a real person naturally wearing a hat?</h2>
       <div class="videos">
         <div class="video-box" id="box-left">
-          <video src="${videoUrl(t.hair, t.leftAlpha)}" autoplay loop muted playsinline></video>
+          <video src="${videoUrl(t.accessory, t.hair, t.leftAlpha)}" autoplay loop muted playsinline></video>
           <div class="video-label">Clip A</div>
           <button data-side="left">Choose A</button>
         </div>
         <div class="video-box" id="box-right">
-          <video src="${videoUrl(t.hair, t.rightAlpha)}" autoplay loop muted playsinline></video>
+          <video src="${videoUrl(t.accessory, t.hair, t.rightAlpha)}" autoplay loop muted playsinline></video>
           <div class="video-label">Clip B</div>
           <button data-side="right">Choose B</button>
         </div>
@@ -367,7 +406,7 @@ function renderTrial() {
       <div class="videos">
         ${labels.map(L => `
           <div class="video-box">
-            <video src="${videoUrl(t.hair, t.labelToAlpha[L])}" autoplay loop muted playsinline></video>
+            <video src="${videoUrl(t.accessory, t.hair, t.labelToAlpha[L])}" autoplay loop muted playsinline></video>
             <div class="video-label">Clip ${L}</div>
             <label>Rank:
               <select data-label="${L}">
@@ -405,6 +444,7 @@ function recordAfc(trial, side, rating) {
   state.responses.push({
     trialId: trial.id,
     type: trial.type,
+    accessory: trial.accessory,
     hair: trial.hair,
     leftAlpha:  trial.leftAlpha,
     rightAlpha: trial.rightAlpha,
@@ -432,6 +472,7 @@ function recordRank(trial, container) {
   state.responses.push({
     trialId: trial.id,
     type: trial.type,
+    accessory: trial.accessory,
     hair: trial.hair,
     labelToAlpha: trial.labelToAlpha,
     ranksByLabel: ranks,
@@ -439,6 +480,84 @@ function recordRank(trial, container) {
   });
   state.index++;
   renderTrial();
+}
+
+function renderExamples() {
+  // Realistic-asset ranking trials — same A/B/C ranking format as the
+  // main study, one trial per hair on the purchased beanie.
+  const hairs = CONFIG.realisticHairs || [];
+  const accessory = CONFIG.realisticAccessory || 'purchased';
+  if (hairs.length === 0) return show('screen-demographics');
+
+  state.realisticTrials = shuffle(hairs.map(hair => ({
+    id: `rank_${accessory}_${hair}`,
+    type: 'rank_realistic',
+    accessory,
+    hair,
+    labelToAlpha: (() => {
+      const a = shuffle(['000', '050', '100']);
+      return { A: a[0], B: a[1], C: a[2] };
+    })(),
+  })));
+  state.realisticIndex = 0;
+  show('screen-examples');
+  renderRealisticTrial();
+}
+
+function renderRealisticTrial() {
+  const trials = state.realisticTrials;
+  if (state.realisticIndex >= trials.length) {
+    return show('screen-demographics');
+  }
+  const t = trials[state.realisticIndex];
+  const labels = Object.keys(t.labelToAlpha);
+  const progress = `<p class="progress">Realistic trial ${state.realisticIndex + 1} of ${trials.length}</p>`;
+  const container = document.getElementById('examples-content');
+  container.innerHTML = progress + `
+    <h2>Rank the three clips by how much the hat appears to be pressing the hair down.</h2>
+    <p class="small">1 = hair least pressed, 3 = hair most pressed. Each rank used exactly once.</p>
+    <div class="videos">
+      ${labels.map(L => `
+        <div class="video-box">
+          <video src="${videoUrl(t.accessory, t.hair, t.labelToAlpha[L])}" autoplay loop muted playsinline></video>
+          <div class="video-label">Clip ${L}</div>
+          <label>Rank:
+            <select data-label="${L}">
+              <option value="">—</option>
+              <option value="1">1 (least pressed)</option>
+              <option value="2">2</option>
+              <option value="3">3 (most pressed)</option>
+            </select>
+          </label>
+        </div>
+      `).join('')}
+    </div>
+    <button id="realistic-rank-submit">Submit ranking</button>
+  `;
+  container.querySelector('#realistic-rank-submit').onclick = () => {
+    const selects = container.querySelectorAll('select');
+    const ranks = {};
+    for (const sel of selects) {
+      if (!sel.value) { alert('Please assign a rank to every clip.'); return; }
+      ranks[sel.dataset.label] = parseInt(sel.value);
+    }
+    if (new Set(Object.values(ranks)).size !== 3) {
+      alert('Each rank (1, 2, 3) must be used exactly once.');
+      return;
+    }
+    state.responses.push({
+      trialId: t.id,
+      type: t.type,
+      accessory: t.accessory,
+      hair: t.hair,
+      labelToAlpha: t.labelToAlpha,
+      ranksByLabel: ranks,
+      msSinceStart: Date.now() - state.startTime,
+    });
+    state.realisticIndex++;
+    renderRealisticTrial();
+  };
+  window.scrollTo(0, 0);
 }
 
 function submitAll() {
