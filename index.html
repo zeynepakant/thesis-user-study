@@ -137,10 +137,21 @@ const CONFIG = {
   hairs: ['strands00001', 'strands00002', 'strands00514'],
   alphas: ['000', '050', '100'],
 
-  // Realistic-asset ranking trials shown after the main 12 trials,
-  // before demographics. Same A/B/C ranking format as the main study
-  // (1 = hair least pressed, 3 = hair most pressed) — gives an alpha
-  // comparison on the realistic mesh that mirrors the geometric one.
+  // Extra examples shown at the end of the study (after the main 12
+  // trials, before the realistic ranking block). One Likert
+  // plausibility question per clip — qualitative-only, separate from
+  // the main analysis. Uses the α=0.5 realistic-beanie clip per hair.
+  examples: [
+    'clip_purchased_strands00001_a050',
+    'clip_purchased_strands00002_a050',
+    'clip_purchased_strands00514_a050',
+  ],
+
+  // Realistic-asset ranking trials shown after the qualitative
+  // examples and before demographics. Same A/B/C ranking format
+  // as the main study (1 = hair least pressed, 3 = hair most
+  // pressed) — gives an alpha comparison on the realistic mesh
+  // that mirrors the geometric one.
   realisticAccessory: 'purchased',
   realisticHairs: ['strands00001', 'strands00002', 'strands00514'],
 };
@@ -207,8 +218,9 @@ const CONFIG = {
   <p class="small">
     Trials are presented in a random order. Each clip is 5 seconds and
     loops automatically while you decide. At the end you will see a
-    short section of ranking trials using a more realistic beanie mesh
-    — the task there is identical to the main ranking task above.
+    short qualitative section showing the same pipeline applied to a
+    more realistic beanie mesh, followed by three more ranking trials
+    on that realistic mesh.
   </p>
   <button id="instructions-btn">Continue to study</button>
 </div>
@@ -216,17 +228,32 @@ const CONFIG = {
 <!-- ────── SCREEN: TRIAL (rendered dynamically) ─────────────────────── -->
 <div id="screen-trial" class="panel hidden"></div>
 
-<!-- ────── SCREEN: REALISTIC TRIALS (purchased-beanie ranking) ──────── -->
+<!-- ────── SCREEN: EXAMPLES (purchased-beanie Likert) ───────────────── -->
 <div id="screen-examples" class="panel hidden">
-  <h1>One more section: realistic-asset trials</h1>
+  <h1>One more section: realistic-asset examples</h1>
   <p>
     The clips you saw in the main trials used a simplified geometric
-    beanie. The clips in this section apply the same pipeline to a
+    beanie. The clips below apply the same pipeline to a
     <em>realistic, artist-authored</em> beanie mesh — closer to how
-    the system would look in a finished avatar application. The task
-    is the same ranking task as before.
+    the system would look in a finished avatar application.
+  </p>
+  <p>
+    Please rate each clip on the same 1–7 plausibility scale.
   </p>
   <div id="examples-content"></div>
+  <button id="examples-btn" disabled>Continue</button>
+</div>
+
+<!-- ────── SCREEN: REALISTIC RANKING TRIALS ─────────────────────────── -->
+<div id="screen-realistic" class="panel hidden">
+  <h1>Last section: realistic-beanie ranking</h1>
+  <p>
+    Three more ranking trials using the same realistic beanie mesh.
+    The task is identical to the main ranking trials: rank the
+    three clips by how much the hat appears to be pressing the hair
+    down.
+  </p>
+  <div id="realistic-content"></div>
 </div>
 
 <!-- ────── SCREEN: DEMOGRAPHICS ─────────────────────────────────────── -->
@@ -483,6 +510,65 @@ function recordRank(trial, container) {
 }
 
 function renderExamples() {
+  // Qualitative Likert examples on the realistic beanie.
+  if (!CONFIG.examples || CONFIG.examples.length === 0) {
+    return renderRealistic();
+  }
+  const container = document.getElementById('examples-content');
+  const ratings = {};   // exampleId → 1..7
+  container.innerHTML = CONFIG.examples.map((id, i) => `
+    <div class="video-box" style="max-width:520px; margin:1.5em auto;">
+      <video src="${CONFIG.videoDir}/${id}.mp4"
+             autoplay loop muted playsinline></video>
+      <div class="video-label">Example ${i + 1}</div>
+      <p class="small" style="text-align:center;margin:0.4em 0;">
+        How natural does this look?
+      </p>
+      <div class="likert-row" data-example-id="${id}">
+        ${[1,2,3,4,5,6,7].map(n =>
+          `<button data-rating="${n}">${n}</button>`).join('')}
+      </div>
+      <div class="likert-anchors">
+        <span>1 — artificial</span>
+        <span>7 — real person</span>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.likert-row').forEach(row => {
+    const exId = row.dataset.exampleId;
+    row.querySelectorAll('button[data-rating]').forEach(btn => {
+      btn.onclick = () => {
+        ratings[exId] = parseInt(btn.dataset.rating);
+        row.querySelectorAll('button[data-rating]').forEach(b => {
+          b.style.background = '';
+          b.style.color = '';
+        });
+        btn.style.background = '#34c759';
+        btn.style.color = 'white';
+        if (Object.keys(ratings).length === CONFIG.examples.length) {
+          document.getElementById('examples-btn').disabled = false;
+        }
+      };
+    });
+  });
+
+  document.getElementById('examples-btn').onclick = () => {
+    for (const exId of CONFIG.examples) {
+      state.responses.push({
+        type: 'example',
+        exampleId: exId,
+        plausibility: ratings[exId],
+        msSinceStart: Date.now() - state.startTime,
+      });
+    }
+    renderRealistic();
+  };
+
+  show('screen-examples');
+}
+
+function renderRealistic() {
   // Realistic-asset ranking trials — same A/B/C ranking format as the
   // main study, one trial per hair on the purchased beanie.
   const hairs = CONFIG.realisticHairs || [];
@@ -500,7 +586,7 @@ function renderExamples() {
     })(),
   })));
   state.realisticIndex = 0;
-  show('screen-examples');
+  show('screen-realistic');
   renderRealisticTrial();
 }
 
@@ -511,8 +597,8 @@ function renderRealisticTrial() {
   }
   const t = trials[state.realisticIndex];
   const labels = Object.keys(t.labelToAlpha);
-  const progress = `<p class="progress">Realistic trial ${state.realisticIndex + 1} of ${trials.length}</p>`;
-  const container = document.getElementById('examples-content');
+  const progress = `<p class="progress">Realistic ranking ${state.realisticIndex + 1} of ${trials.length}</p>`;
+  const container = document.getElementById('realistic-content');
   container.innerHTML = progress + `
     <h2>Rank the three clips by how much the hat appears to be pressing the hair down.</h2>
     <p class="small">1 = hair least pressed, 3 = hair most pressed. Each rank used exactly once.</p>
