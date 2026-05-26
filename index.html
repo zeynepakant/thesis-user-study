@@ -693,7 +693,10 @@ document.getElementById('instructions-btn').onclick = () => {
   state.startTime = Date.now();
   renderTrial();
 };
-document.getElementById('demo-btn').onclick = submitAll;
+document.getElementById('demo-btn').onclick = () => {
+  document.getElementById('demo-btn').disabled = true;
+  submitAll();
+};
 document.getElementById('copy-btn').onclick = () => {
   const ta = document.getElementById('result-json');
   ta.select();
